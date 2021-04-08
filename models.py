@@ -1,4 +1,4 @@
-class DgsFunction:
+class WikiFunction:
     def __init__(self, func_name: str, full_function_syntax: str, returning: str, description: str,
                  arg_descs: dict):
         self.function_name = func_name
@@ -12,6 +12,9 @@ class DgsFunction:
 
     def get_full_function(self):
         return self.full_function_name_with_args
+
+    def get_descriptions(self):
+        return self.description
 
     def get_return_value(self):
         return self.returning_value

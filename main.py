@@ -1,24 +1,13 @@
-import os
-import sys
-from xml.etree.ElementTree import ElementTree
-
-import html
-
-from lxml.html.clean import Cleaner
-
-from requests import get
-from bs4 import BeautifulSoup, PageElement, ResultSet
-
-import lxml.html
-from lxml import etree
 import re
 
-from models import DgsFunction
+from bs4 import BeautifulSoup
+from requests import get
+
+from models import WikiFunction
+from colorama import Fore, Style
+from pyfiglet import figlet_format
 
 loaded_models = []
-
-cleaner = Cleaner()
-cleaner.javascript = True
 
 
 def get_function_object(func_name):
@@ -58,16 +47,17 @@ def get_function_object(func_name):
                 function_return_descriptions = ""
         except:
             function_return_descriptions = ""
-        #print(f"[{func_name}]Return Descriptions: ", function_return_descriptions)
+        # print(f"[{func_name}]Return Descriptions: ", function_return_descriptions)
 
         # Oh finally we're here -____-
-        obj = DgsFunction(func_name=func_name, full_function_syntax=function_syntax,
+        obj = WikiFunction(func_name=func_name, full_function_syntax=function_syntax,
                           returning=function_return_descriptions, description=function_description,
                           arg_descs=arg_descriptions)
         return obj
     except Exception as error:
         print(f"Got Error {error} [{func_name}]")
         return None
+
 
 """def get_function_object(func_name):
     page_for_function = f"https://wiki.multitheftauto.com/wiki/{func_name}"
@@ -112,58 +102,73 @@ def get_function_object(func_name):
 """
 
 
+def receive_wiki_functions(url: str, script_side: str):
+    class_to_import_to = ""
+    ts_file = ""
+    if script_side == "Client":
+        class_to_import_to = "ClientDefinitions"
+        ts_file = "client.ts"
+    elif script_side == "Server":
+        class_to_import_to = "ServerDefinitions"
+        ts_file = "server.ts"
+    elif script_side == "Shared":
+        class_to_import_to = "SharedDefinitions"
+        ts_file = "shared.ts"
+
+    with open(ts_file, "a+") as clients_file:
+        dgs_soup = BeautifulSoup(get(url).text)
+        all_links = dgs_soup.find_all("a")
+
+        for link in all_links:
+            href = link.attrs.get("href")
+            if href is not None:
+                if "-" not in href and "On" not in href:
+                    if re.match(r'/wiki/.*', href) is not None:
+                        func_name = href.split("/")[-1]  # The last part is the function name
+                        function_object = get_function_object(func_name=func_name)
+                        if function_object is not None:
+                            print(f"Got Function Object For {function_object.function_name}")
+                            loaded_models.append(function_object)
+                            tmp_args = ""
+                            sp = function_object.full_function_name_with_args.split("(")
+                            args = sp[1]
+                            args = args.replace(" )", "")
+                            function_object.description = function_object.description.replace('\\n', '')
+                            function_object.returning_value = function_object.returning_value.replace('\\n', '')
+                            args = args.split(",").__str__().replace("\\n", "")
+                            function_object.function_name = function_object.function_name[
+                                                                0].lower() + function_object.function_name[1:]
+                            text_to_append = f"""tmpDef = new MTAFunction;
+    tmpDef.label = "{function_object.function_name}";
+    tmpDef.description = "{function_object.description.strip()}";
+    tmpDef.returnType = "{function_object.returning_value.strip()}";
+    tmpDef.args = {args};
+    tmpDef.argDescs = {"{}"};
+    tmpDef.scriptSide = ScriptSide.{script_side};
+    {class_to_import_to}.push(tmpDef);\n\n"""
+                            clients_file.writelines(text_to_append)
+                            clients_file.flush()
+
+
+print(Fore.CYAN, figlet_format("MTA wiki crawler"))
+
 while True:
-    print("1 - Generate dgs functions for mtalua.tmLanguage.json file\n")
-    print("2 - Generate dgs functions classes for server.ts, client.ts , .....")
-    print("3 - Generate Functions List From clients.ts")
+
+    print(Fore.BLUE, "========================================\n")
+    print(Fore.RESET, "Options List:")
+
+    print("1 - Generate dgs functions classes for client.ts")
+    print("2 - Generate Functions List From clients.ts")
+    print("3 - Generate MTA-server-functions for server.ts")
+    print("4 - Generate MTA-client-functions for client.ts")
+    print("5 - Generate MTA-shared-functions for shared.ts")
+
     operation = input("Please enter the operation number:\n")
 
     operation = int(operation)
     if operation == 1:
-        pass
-        # print(f"Loaded {len(loaded_models)} Dgs-Only functions and informations")
-        """for ul in all_uls:
-            this_lis = ul.find_all("li")
-            for li in this_lis:
-                # print(li)
-                the_link = li.find_all("a")
-                print(the_link)
-                # if "-" not in str(the_link.attrs["href"]):
-                #    print(the_link)"""
+        receive_wiki_functions("https://wiki.multitheftauto.com/wiki/Resource:Dgs", "Client")
     elif operation == 2:
-        with open("clients.ts", "a+") as clients_file:
-            dgs_soup = BeautifulSoup(get("https://wiki.multitheftauto.com/wiki/Resource:Dgs").text, features="lxml")
-            all_links = dgs_soup.find_all("a")
-
-            for link in all_links:
-                href = link.attrs.get("href")
-                if href is not None:
-                    if "-" not in href and "On" not in href:
-                        if re.match(r'/wiki/Dgs.*', href) is not None:
-                            func_name = href.split("/")[-1]
-                            function_object = get_function_object(func_name=func_name)
-                            if function_object is not None:
-                                print(f"Got Function Object For {function_object.function_name}")
-                                loaded_models.append(function_object)
-                                tmp_args = ""
-                                sp = function_object.full_function_name_with_args.split("(")
-                                args = sp[1]
-                                args = args.replace(" )", "")
-                                function_object.description = function_object.description.replace('\\n', '')
-                                function_object.returning_value = function_object.returning_value.replace('\\n', '')
-                                args = args.split(",").__str__().replace("\\n", "")
-                                function_object.function_name = function_object.function_name[0].lower() + function_object.function_name[1:]
-                                text_to_append = f"""tmpDef = new MTAFunction;
-tmpDef.label = "{function_object.function_name}";
-tmpDef.description = "{function_object.description.strip()}";
-tmpDef.returnType = "{function_object.returning_value.strip()}";
-tmpDef.args = {args};
-tmpDef.argDescs = {"{}"};
-tmpDef.scriptSide = ScriptSide.Client;
-ClientDefinitions.push(tmpDef);\n\n"""
-                                clients_file.writelines(text_to_append)
-                                clients_file.flush()
-    elif operation == 3:
         with open("clients.ts", "r") as the_file:
             with open("functionsList.txt", "a+") as functions_list:
                 for line in the_file.readlines():
@@ -172,5 +177,11 @@ ClientDefinitions.push(tmpDef);\n\n"""
                         line = line.replace('"', "")
                         line = line.replace(';', "")
                         line = line.replace("\n", "")
-                        functions_list.write(line+"|")
+                        functions_list.write(line + "|")
                         functions_list.flush()
+    elif operation == 3:
+        receive_wiki_functions("https://wiki.multitheftauto.com/wiki/Server_Scripting_Functions", "Server")
+    elif operation == 4:
+        receive_wiki_functions("https://wiki.multitheftauto.com/wiki/Client_Scripting_Functions", "Client")
+    elif operation == 5:
+        receive_wiki_functions("https://wiki.multitheftauto.com/wiki/Shared_Scripting_Functions", "Shared")
